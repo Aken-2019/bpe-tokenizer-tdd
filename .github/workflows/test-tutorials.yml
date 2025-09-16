@@ -1,0 +1,38 @@
+name: Test Tutorials
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-tutorials:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tutorial:
+          - tutorial-1-initialization
+          - tutorial-2-implement-train
+          - tutorial-3-encode-decode
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          cd ${{ matrix.tutorial }}
+          pip install -r requirements.txt
+
+      - name: Replace BPETokenizer.py with solution
+        run: |
+          cd ${{ matrix.tutorial }}/src
+          mv solution_BPETokenizer.py BPETokenizer.py
+
+      - name: Run pytest
+        run: |
+          cd ${{ matrix.tutorial }}
+          pytest
