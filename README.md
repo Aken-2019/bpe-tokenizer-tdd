@@ -7,7 +7,7 @@ Note: While this implementation follows the concepts from Sebastian Raschka's bl
 
 ## Requirements
 
-- The code is developed with Python 3.12 and should work with Python 3.7 and above.
+- The code is developed with tested from Python 3.10 to 3.13.
 - Dependencies listed in `requirements.txt` of each tutorial section
 - You have a basic understanding of Python and test-driven development (TDD)
 

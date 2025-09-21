@@ -18,7 +18,7 @@ Welcome to the first part of our series on building a Byte Pair Encoding (BPE) t
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - `pytest` for testing
 - Basic knowledge of Python and unit testing
 
