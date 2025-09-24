@@ -39,8 +39,8 @@ class TestBPETokenizer:
         tokenizer = BPETokenizer()
         text = "ababab"  # Most frequent pair is ('a', 'b')
 
-        # Byte-level BPE starts with 256 byte values
-        initial_vocab_size = 256
+        # Byte-level BPE starts with 256 byte values + Ġ character
+        initial_vocab_size = 257  # 256 bytes + Ġ
         vocab_size = initial_vocab_size + 1  # Allows for exactly one merge
 
         tokenizer.train(text, vocab_size)
@@ -56,8 +56,8 @@ class TestBPETokenizer:
         ), "Merged token 'ab' should be in the vocabulary"
 
         # Check that the merge was recorded correctly
-        a_id = ord('a')  # Byte value for 'a'
-        b_id = ord('b')  # Byte value for 'b'
+        a_id = tokenizer.inverse_vocab["a"]  # Should be ord('a') = 97
+        b_id = tokenizer.inverse_vocab["b"]  # Should be ord('b') = 98
         ab_id = tokenizer.inverse_vocab["ab"]
 
         assert (
@@ -73,13 +73,13 @@ class TestBPETokenizer:
         tokenizer = BPETokenizer()
         text = "abcde"
 
-        # Byte-level BPE starts with 256 byte values
-        initial_vocab_size = 256
+        # Byte-level BPE starts with 256 byte values + Ġ character
+        initial_vocab_size = 257  # 256 bytes + Ġ
         vocab_size = initial_vocab_size + 5  # Plenty of room, but no pairs to merge
 
         tokenizer.train(text, vocab_size)
 
-        assert len(tokenizer.vocab) == initial_vocab_size, "Vocab size should be the initial 256 bytes"
+        assert len(tokenizer.vocab) == initial_vocab_size, "Vocab size should be the initial 257 tokens (256 bytes + Ġ)"
         assert len(tokenizer.bpe_merges) == 0, "No merges should be recorded"
 
     def test_find_freq_pair_basic(self):
@@ -174,7 +174,7 @@ class TestBPETokenizer:
         # Test handling of empty sequence
         tokenizer = BPETokenizer()
         tokenizer.train("", 300)
-        assert len(tokenizer.vocab) == 256, "Empty sequence should result in base byte vocab"
+        assert len(tokenizer.vocab) == 257, "Empty sequence should result in base byte vocab + Ġ"
 
         # Test training with special tokens
         tokenizer = BPETokenizer()
@@ -203,7 +203,7 @@ class TestBPETokenizer:
         """Test encoding when BPE merges are involved."""
         tokenizer = BPETokenizer()
         text = "ababab"
-        tokenizer.train(text, vocab_size=257)  # 256 bytes + 1 merge for 'ab'
+        tokenizer.train(text, vocab_size=258)  # 257 base + 1 merge for 'ab'
         
         # The string "ababab" should now encode to fewer tokens
         # since 'ab' will be treated as a single token
@@ -235,8 +235,8 @@ class TestBPETokenizer:
         token_ids = tokenizer.encode(text)
         
         # Space should be replaced with Ġ during preprocessing except at start
-        expected_text = "helloĠworld"
-        expected_ids = [ord(c) for c in expected_text]
+        # We expect: h, e, l, l, o, Ġ, w, o, r, l, d
+        expected_ids = [ord(c) for c in "hello"] + [tokenizer.inverse_vocab["Ġ"]] + [ord(c) for c in "world"]
         assert token_ids == expected_ids, "Spaces should be converted to Ġ except at beginning"
 
     def test_decode_empty_sequence(self):
@@ -300,10 +300,10 @@ class TestBPETokenizer:
         """Test basic merge rule application."""
         tokenizer = BPETokenizer()
         text = "ababab"
-        tokenizer.train(text, vocab_size=257)  # 256 bytes + 1 merge for 'ab'
+        tokenizer.train(text, vocab_size=258)  # 257 base + 1 merge for 'ab'
         
-        # Initial token sequence before merges (byte values)
-        char_ids = [ord(c) for c in text]
+        # Initial token sequence before merges (using vocab token IDs)
+        char_ids = [tokenizer.inverse_vocab[c] for c in text]
         
         # Apply merges
         merged_ids = tokenizer.apply_merges(char_ids)
@@ -320,10 +320,10 @@ class TestBPETokenizer:
         """Test when no merge rules can be applied."""
         tokenizer = BPETokenizer()
         text = "abc"
-        tokenizer.train(text, vocab_size=256)  # No merges possible - just byte vocab
+        tokenizer.train(text, vocab_size=257)  # No merges possible - just base vocab
         
-        # Convert to token IDs (byte values)
-        token_ids = [ord(c) for c in text]
+        # Convert to token IDs (using vocab)
+        token_ids = [tokenizer.inverse_vocab[c] for c in text]
         
         # Apply merges - should return same sequence since no merges are possible
         result = tokenizer.apply_merges(token_ids)
@@ -333,10 +333,10 @@ class TestBPETokenizer:
         """Test applying multiple merge rules in correct order."""
         tokenizer = BPETokenizer()
         text = "hello hello"  # Common pairs: 'll', 'he', etc.
-        tokenizer.train(text, vocab_size=260)  # 256 bytes + 4 merges
+        tokenizer.train(text, vocab_size=261)  # 257 base + 4 merges
         
-        # Initial character sequence (byte values)
-        char_ids = [ord(c) for c in "hello"]
+        # Initial character sequence (using vocab token IDs)
+        char_ids = [tokenizer.inverse_vocab[c] for c in "hello"]
         
         # Apply merges
         merged_ids = tokenizer.apply_merges(char_ids)

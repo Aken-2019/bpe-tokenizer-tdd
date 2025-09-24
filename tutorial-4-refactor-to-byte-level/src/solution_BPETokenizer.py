@@ -97,7 +97,7 @@ class BPETokenizer:
                             processed_text.append(char)
                     processed_text = "".join(processed_text)
                     
-                    token_ids = [ord(char) for char in processed_text]
+                    token_ids = [self.inverse_vocab[char] for char in processed_text]
                     result.extend(self.apply_merges(token_ids))
             
             return result
@@ -116,8 +116,8 @@ class BPETokenizer:
                 processed_text.append(char)
         processed_text = "".join(processed_text)
 
-        # Convert to byte values and apply BPE merges
-        token_ids = [ord(char) for char in processed_text]
+        # Convert to token IDs using vocabulary and apply BPE merges
+        token_ids = [self.inverse_vocab[char] for char in processed_text]
         return self.apply_merges(token_ids)
     
     def decode(self, token_ids: list[int]) -> str:
@@ -211,6 +211,12 @@ class BPETokenizer:
         # Initialize vocab with all 256 byte values
         self.vocab = {i: chr(i) for i in range(256)}
         self.inverse_vocab = {chr(i): i for i in range(256)}
+        
+        # Add the "Ġ" character if it's not already in the vocab (it's needed for space preprocessing)
+        if "Ġ" not in self.inverse_vocab:
+            new_id = len(self.vocab)
+            self.vocab[new_id] = "Ġ"
+            self.inverse_vocab["Ġ"] = new_id
 
         # Add special tokens before training
         if allowed_special:
@@ -220,8 +226,8 @@ class BPETokenizer:
                     self.vocab[new_id] = special
                     self.inverse_vocab[special] = new_id
 
-        # Convert processed text to byte values
-        token_ids = [ord(char) for char in processed_text]
+        # Convert processed text to token IDs using vocabulary
+        token_ids = [self.inverse_vocab[char] for char in processed_text]
 
         # BPE merge process
         while len(self.vocab) < vocab_size:
