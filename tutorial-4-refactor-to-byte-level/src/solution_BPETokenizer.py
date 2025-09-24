@@ -15,121 +15,136 @@ class BPETokenizer:
         
     def encode(self, text: str, allowed_specials: set[str] = None) -> list[int]:
         """
-        Encode text into a sequence of token IDs using the trained BPE merges.
-        
-        This method converts input text into tokens by:
-        1. Handling special tokens if they are in allowed_specials
-        2. Checking for unknown characters
-        3. Applying BPE merges to convert characters into larger tokens
+        Encode text into a sequence of token IDs using byte-level BPE.
         
         Args:
-            text (str): The text to encode. Can contain regular characters and special tokens.
-            allowed_specials (set[str], optional): Set of special tokens that are allowed
-                in this encoding operation. If None or if a special token is not in this set
-                but appears in the text, all characters will be treated as regular text.
-                For example, if "<|endoftext|>" is in allowed_specials and text, it will
-                be encoded as a single token.
+            text (str): The text to encode.
+            allowed_specials (set[str], optional): Set of special tokens that are allowed.
             
         Returns:
-            list[int]: A sequence of token IDs representing the encoded text. For example,
-                "hello" might be encoded as [23, 47, 61] after BPE merges are applied.
+            list[int]: A sequence of token IDs representing the encoded text.
             
         Raises:
-            ValueError: If the tokenizer hasn't been trained (vocab is empty)
-            ValueError: If the text contains characters not present in the vocabulary
-            ValueError: If any special token in allowed_specials is not in the vocabulary
-            
-        Example:
-            >>> tokenizer = BPETokenizer()
-            >>> tokenizer.train("hello world", vocab_size=10)
-            >>> tokenizer.encode("hello")  # Returns something like [23, 47, 61]
-            >>> tokenizer.encode("hi", allowed_specials={"<|endoftext|>"})  # Safely encode with special token awareness
+            ValueError: If the tokenizer hasn't been trained or special tokens not in vocab.
         """
         if len(self.vocab) == 0:
             raise ValueError("Tokenizer not trained.")
         if len(text) == 0:
             return []
         
-        # Step 1: Handle special tokens if provided in allowed_specials
+        # Handle special tokens by splitting text
         if allowed_specials:
             # Validate all special tokens exist in vocabulary
-            if not set(allowed_specials) <= set(self.inverse_vocab):
-                raise ValueError(f"Special tokens {set(allowed_specials) - set(self.inverse_vocab)} not found in vocabulary.")
-            else:
-                # Initialize processing queue with (text_segment, token_id) pairs
-                # token_id is None for regular text, actual token_id for special tokens
-                splitted_text_token_mapping = deque([(text, None)])
-                special_encoded_split = []
-
-                # Process each segment, looking for special tokens
-                while len(splitted_text_token_mapping) > 0:
-                    for special in allowed_specials:
-                        left_text, pre_token = splitted_text_token_mapping.popleft()
-                        print(left_text, pre_token)
-                        
-                        # Only look for special tokens in unprocessed text segments
-                        if pre_token is None and special in left_text:
-                            # Split text on special token boundaries
-                            left_split = left_text.split(special)
-                            print(left_split)
-
-                            # Case 1: Text is exactly the special token
-                            if left_split == ['']:
-                                special_encoded_split.append((special, self.inverse_vocab[special]))
-                            # Case 2: Text contains special token and regular text
-                            else:
-                                for i, itext in enumerate(left_split):
-                                    # Handle regular text segments
-                                    if itext != '':
-                                        special_encoded_split.append((itext, None))
-                                    
-                                    # Insert special token between text segments
-                                    # Don't add after the last segment
-                                    if i < len(left_split) - 1:
-                                        special_encoded_split.append((special, self.inverse_vocab[special]))
-                        else:
-                            # Pass through already processed segments unchanged
-                            special_encoded_split.append((left_text, pre_token))
+            for special in allowed_specials:
+                if special not in self.inverse_vocab:
+                    raise ValueError(f"Special token {special} not found in vocabulary.")
+            
+            # Check if entire text is a special token
+            if text in allowed_specials and text in self.inverse_vocab:
+                return [self.inverse_vocab[text]]
+            
+            # Split text by special tokens and process each segment
+            result = []
+            remaining_text = text
+            
+            # Find special tokens in text and split
+            segments = []
+            current_pos = 0
+            
+            while current_pos < len(remaining_text):
+                found_special = None
+                found_pos = len(remaining_text)
+                
+                # Find the earliest occurring special token
+                for special in allowed_specials:
+                    pos = remaining_text.find(special, current_pos)
+                    if pos != -1 and pos < found_pos:
+                        found_pos = pos
+                        found_special = special
+                
+                if found_special:
+                    # Add text before special token (if any)
+                    if found_pos > current_pos:
+                        segments.append(remaining_text[current_pos:found_pos])
+                    # Add the special token
+                    segments.append(found_special)
+                    current_pos = found_pos + len(found_special)
+                else:
+                    # No more special tokens, add remaining text
+                    if current_pos < len(remaining_text):
+                        segments.append(remaining_text[current_pos:])
+                    break
+            
+            # Process each segment
+            for segment in segments:
+                if segment in allowed_specials:
+                    # Special token
+                    result.append(self.inverse_vocab[segment])
+                else:
+                    # Regular text
+                    # Check for disallowed special tokens
+                    for token in self.inverse_vocab:
+                        if token.startswith("<|") and token.endswith("|>") and token in segment:
+                            if token not in allowed_specials:
+                                raise ValueError(f"Disallowed special token {token} found in text.")
+                    
+                    # Preprocess and encode regular text
+                    processed_text = []
+                    for i, char in enumerate(segment):
+                        if char == " " and i != 0:
+                            processed_text.append("Ġ")
+                        if char != " ":
+                            processed_text.append(char)
+                    processed_text = "".join(processed_text)
+                    
+                    token_ids = [ord(char) for char in processed_text]
+                    result.extend(self.apply_merges(token_ids))
+            
+            return result
         else:
-            # No special tokens - treat entire input as regular text
-            special_encoded_split = [(text, None)]
+            # No allowed_specials - check for any special tokens and raise error
+            for token in self.inverse_vocab:
+                if token.startswith("<|") and token.endswith("|>") and token in text:
+                    raise ValueError(f"Special token {token} found in text but not allowed.")
 
-        # Step 2: Validate all regular text characters are in vocabulary
-        special_free_characters = "".join([text for text, pre_token in special_encoded_split if pre_token is None])
-        print(special_free_characters)
-        if not set(list(special_free_characters)) <= set(list(self.inverse_vocab)):
-            print(set(list(special_free_characters)))
-            raise ValueError("Unknown characters in text.")
+        # Preprocess: Replace spaces with "Ġ" (except at the beginning)
+        processed_text = []
+        for i, char in enumerate(text):
+            if char == " " and i != 0:
+                processed_text.append("Ġ")
+            if char != " ":
+                processed_text.append(char)
+        processed_text = "".join(processed_text)
 
-        # Step 3: Encode all segments
-        results = []
-        for text, pre_token in special_encoded_split:
-            if pre_token is not None:
-                # Special tokens map directly to their vocabulary ID
-                results.append(pre_token)
-            else:
-                # Regular text needs BPE encoding
-                results.extend(self.apply_merges([self.inverse_vocab[t] for t in text]))
-
-        return results
+        # Convert to byte values and apply BPE merges
+        token_ids = [ord(char) for char in processed_text]
+        return self.apply_merges(token_ids)
     
     def decode(self, token_ids: list[int]) -> str:
         """
-        Decode a sequence of token IDs back into text.
+        Decode a sequence of token IDs back into text using byte-level BPE.
         
         Args:
             token_ids (list[int]): The sequence of token IDs to decode
             
         Returns:
-            str: The decoded text
+            str: The decoded text with "Ġ" converted back to spaces
             
         Raises:
             ValueError: If any token ID is not in the vocabulary
         """
+        if len(token_ids) == 0:
+            return ""
+            
         if not set(token_ids) <= set(self.vocab):
-            raise ValueError(f"Unknown token id {set(token_ids)- set(self.vocab)}") 
+            raise ValueError(f"Unknown token id {set(token_ids) - set(self.vocab)}") 
 
+        # Decode tokens to text
         text = "".join([self.vocab[id] for id in token_ids])
+        
+        # Convert "Ġ" back to spaces
+        text = text.replace("Ġ", " ")
+        
         return text
         
     def apply_merges(self, token_ids: list[int]) -> list[int]:
@@ -171,7 +186,7 @@ class BPETokenizer:
         self, text: str, vocab_size: int, allowed_special: set[str] = None
     ) -> None:
         """
-        Train the BPE tokenizer on the provided text.
+        Train the BPE tokenizer on the provided text using byte-level encoding.
 
         Args:
             text (str): The training text.
@@ -179,42 +194,49 @@ class BPETokenizer:
             allowed_special (set[str], optional): Special tokens to include in the vocabulary.
 
         Implementation note:
-        This implementation satisfies three test cases in the tutorial:
-        1. test_train_builds_initial_vocab - Building initial character vocabulary
+        This implementation uses byte-level BPE instead of character-level BPE:
+        1. test_train_builds_initial_vocab - Building initial byte vocabulary (256 bytes)
         2. test_train_learns_merges_and_respects_vocab_size - BPE merge process
         3. test_train_adds_special_tokens - Special token handling
-
-        See the test file and tutorial for detailed expectations of each component.
         """
-        # build the initial vocab without BPE
-        # pass `test_train_builds_initial_vocab`
-        unique_char = sorted(list(set(text)))
-        self.vocab = {i: ch for i, ch in enumerate(unique_char)}
-        self.inverse_vocab = {ch: i for i, ch in self.vocab.items()}
+        # Preprocess: Replace spaces with "Ġ" (except at the beginning)
+        processed_text = []
+        for i, char in enumerate(text):
+            if char == " " and i != 0:
+                processed_text.append("Ġ")
+            if char != " ":
+                processed_text.append(char)
+        processed_text = "".join(processed_text)
 
-        # pass `test_train_learns_merges_and_respects_vocab_size`
-        # iterate vocab and build merges using BPE
-        token_ids = [self.inverse_vocab[ch] for ch in text]
+        # Initialize vocab with all 256 byte values
+        self.vocab = {i: chr(i) for i in range(256)}
+        self.inverse_vocab = {chr(i): i for i in range(256)}
+
+        # Add special tokens before training
+        if allowed_special:
+            for special in allowed_special:
+                if special not in self.inverse_vocab:
+                    new_id = len(self.vocab)
+                    self.vocab[new_id] = special
+                    self.inverse_vocab[special] = new_id
+
+        # Convert processed text to byte values
+        token_ids = [ord(char) for char in processed_text]
+
+        # BPE merge process
         while len(self.vocab) < vocab_size:
             pair = self.find_freq_pair(token_ids)
-            print(pair)
             if pair is None:
                 break
             else:
                 pair_id = max(self.vocab) + 1
                 self.bpe_merges[pair] = pair_id
 
-                self.vocab[pair_id] = self.vocab[pair[0]] + self.vocab[pair[1]]
-                self.inverse_vocab[self.vocab[pair_id]] = pair_id
+                # Create merged token string
+                merged_token = self.vocab[pair[0]] + self.vocab[pair[1]]
+                self.vocab[pair_id] = merged_token
+                self.inverse_vocab[merged_token] = pair_id
                 token_ids = self.replace_pair(token_ids, pair, pair_id)
-
-        # pass `test_train_adds_special_tokens`
-        # handle special tokens
-        if allowed_special:
-            for special in allowed_special:
-                new_id = max(self.vocab) + 1
-                self.vocab[new_id] = special
-                self.inverse_vocab[special] = new_id
 
     @staticmethod
     def find_freq_pair(token_ids: list[int]) -> tuple[int, int] | None:

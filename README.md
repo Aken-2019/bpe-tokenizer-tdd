@@ -3,7 +3,7 @@ This folder contains a test-driven development (TDD) approach to building a Byte
 Note: While this implementation follows the concepts from Sebastian Raschka's blog post, it has been reimplemented from scratch with a focus on test-driven development and educational purposes. The implementation differs from the original to better suit the tutorial format:
 1. The code is organized into multiple tutorial sections, each focusing on a specific aspect of the BPE tokenizer.
 2. Each section includes its own documentation, tests, and implementation templates to facilitate learning and practice. Docstring, type hints, and comments are added for clarity.
-3. The original implementation is a byte-level BPE tokenizer, while this tutorial implements a character-level BPE tokenizer for simplicity.
+3. The tutorial progresses from a character-level BPE tokenizer (tutorials 1-3) to a byte-level BPE tokenizer (tutorial 4), matching the approach used in modern tokenizers like GPT-2.
 
 ## Requirements
 
@@ -18,6 +18,7 @@ The project is divided into multiple tutorial sections, each building upon the p
 1. `tutorial-1-initialization/`: Setting up the project and implementing the basic tokenizer class
 2. `tutorial-2-implement-train/`: Implementing the core BPE training algorithm
 3. `tutorial-3-encode-decode/`: Implementing text encoding and decoding with the trained BPE model
+4. `tutorial-4-refactor-to-byte-level/`: Refactoring to byte-level BPE for better text coverage and robustness
 
 
 Each tutorial section is self-contained with its own:
